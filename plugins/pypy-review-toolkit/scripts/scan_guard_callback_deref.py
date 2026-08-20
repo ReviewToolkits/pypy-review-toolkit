@@ -4,6 +4,17 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from scan_common import (  # noqa: E402
+    collect_python_files,
+    emit,
+    find_project_root,
+    parse_common_args,
+)
+from discover_pypy import build_pypy_envelope, discover  # noqa: E402
 
 
 def _self_field(node: ast.AST) -> str | None:
@@ -533,7 +544,10 @@ def _is_app_exposed_method(
     return False
 
 
-def _scan_file(path: Path) -> tuple[int, list[dict[str, object]]]:
+def _scan_file(
+    path: Path,
+    project_root: Path,
+) -> tuple[int, list[dict[str, object]]]:
     """Scan one Python file for guard-callback-deref findings."""
     try:
         source = path.read_text(encoding="utf-8")
@@ -568,7 +582,7 @@ def _scan_file(path: Path) -> tuple[int, list[dict[str, object]]]:
                     else "medium"
                 ),
                 "detail": detail,
-                "file": str(path),
+                "file": str(path.relative_to(project_root)),
                 "function": node.name,
                 "line": node.lineno,
                 "message": (
@@ -582,53 +596,58 @@ def _scan_file(path: Path) -> tuple[int, list[dict[str, object]]]:
     return functions_analyzed, findings
 
 
-def _scan_tree(root: Path) -> dict[str, object]:
-    """Scan a PyPy checkout and return JSON-serializable results."""
-    pypy_root = root / "pypy"
+def analyze(target: str, *, max_files: int = 0) -> dict:
+    """Scan a PyPy checkout or scoped path for guard-callback-deref patterns."""
+    resolved = Path(target).resolve()
+    project_root = find_project_root(resolved)
+    discovery = discover(target)
 
-    if not pypy_root.is_dir():
-        raise SystemExit(f"not a PyPy checkout: {root}")
+    if discovery.get("is_pypy_checkout"):
+        checkout_root = Path(discovery["checkout_root"])
+        files_by_layer = discovery.get("files_by_layer", {})
+
+        files = [
+            checkout_root / rel
+            for layer_files in files_by_layer.values()
+            for rel in layer_files
+        ]
+        files = sorted(set(files))
+        files_total = len(files)
+
+        if max_files > 0 and files_total > max_files:
+            files = files[:max_files]
+    else:
+        files, files_total = collect_python_files(resolved, max_files)
+
+    non_test_files = [
+        path
+        for path in files
+        if "/test/" not in str(path).replace("\\", "/")
+        and "/tests/" not in str(path).replace("\\", "/")
+    ]
 
     functions_analyzed = 0
     findings: list[dict[str, object]] = []
 
-    for path in sorted(pypy_root.rglob("*.py")):
-        analyzed, file_findings = _scan_file(path)
+    for path in non_test_files:
+        analyzed, file_findings = _scan_file(path, project_root)
         functions_analyzed += analyzed
         findings.extend(file_findings)
 
-    by_classification: dict[str, int] = {}
+    envelope = build_pypy_envelope(
+        discovery,
+        findings,
+        functions_analyzed=functions_analyzed,
+    )
 
-    for finding in findings:
-        classification = str(finding["classification"])
-        by_classification[classification] = (
-            by_classification.get(classification, 0) + 1
-        )
-
-    return {
-        "functions_analyzed": functions_analyzed,
-        "findings": findings,
-        "summary": {
-            "by_classification": by_classification,
-            "total_findings": len(findings),
-        },
-    }
+    return envelope
 
 
 def main() -> int:
     """Run the scanner from the command line."""
-    import json
-    import sys
-
-    if len(sys.argv) != 2:
-        print(
-            "usage: python scan_guard_callback_deref.py <pypy-root>",
-            file=sys.stderr,
-        )
-        return 2
-
-    results = _scan_tree(Path(sys.argv[1]))
-    print(json.dumps(results, indent=2, sort_keys=True))
+    target, max_files = parse_common_args(sys.argv[1:])
+    result = analyze(target, max_files=max_files)
+    emit(result)
     return 0
 
 
