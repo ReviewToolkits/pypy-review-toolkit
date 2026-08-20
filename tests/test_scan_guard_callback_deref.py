@@ -176,3 +176,88 @@ def test_textio_truncate_issue_10_pattern_is_consider():
     assert classification == "CONSIDER"
     assert "self-dispatch" in reason
     assert "guard-callback-deref" in reason
+
+
+def test_check_closed_establishes_guarded_buffer():
+    body = _body(
+        """
+        self._check_closed(space)
+        space.call_method(self, "flush")
+        return space.call_method(self.w_buffer, "tell")
+        """
+    )
+
+    classification, reason = _classify_guard_callback_deref(body)
+
+    assert classification == "CONSIDER"
+    assert "self-dispatch" in reason
+
+
+def test_deref_in_assignment_is_consider():
+    body = _body(
+        """
+        self._check_attached(space)
+        space.call_method(self, "flush")
+        w_pos = space.call_method(self.w_buffer, "tell")
+        return w_pos
+        """
+    )
+
+    classification, reason = _classify_guard_callback_deref(body)
+
+    assert classification == "CONSIDER"
+    assert "guard-callback-deref" in reason
+
+
+def test_deref_in_nested_if_is_consider():
+    body = _body(
+        """
+        self._check_attached(space)
+        if whence == 2:
+            space.call_method(self, "flush")
+            return space.call_method(self.w_buffer, "seek")
+        """
+    )
+
+    classification, reason = _classify_guard_callback_deref(body)
+
+    assert classification == "CONSIDER"
+    assert "guard-callback-deref" in reason
+
+
+def test_deref_in_try_finally_is_consider():
+    body = _body(
+        """
+        self._check_attached(space)
+        try:
+            space.call_method(self, "flush")
+        finally:
+            ret = space.call_method(self.w_buffer, "close")
+        return ret
+        """
+    )
+
+    classification, reason = _classify_guard_callback_deref(body)
+
+    assert classification == "CONSIDER"
+    assert "self-dispatch" in reason
+
+
+def test_deref_in_try_else_is_consider():
+    body = _body(
+        """
+        self._check_attached(space)
+        try:
+            space.call_method(self, "flush")
+        except OperationError:
+            raise
+        else:
+            ret = space.call_method(self.w_buffer, "close")
+        return ret
+        """
+    )
+
+    classification, reason = _classify_guard_callback_deref(body)
+
+    assert classification == "CONSIDER"
+    assert "guard-callback-deref" in reason
