@@ -97,3 +97,11 @@ Not yet published to a marketplace. For local development:
 ```bash
 claude --plugin-dir plugins/pypy-review-toolkit
 ```
+
+---
+
+## Author
+
+Bhuvansh Kataria ([BHUVANSH855](https://github.com/BHUVANSH855))
+
+---
