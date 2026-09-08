@@ -4,26 +4,30 @@ A Claude Code plugin for statically reviewing PyPy's own RPython-level
 implementation — the interpreter core, object space, and JIT — for
 correctness bugs and translation hazards specific to how PyPy is built.
 
-Sibling of [cpython-review-toolkit](https://github.com/devdanzin/cpython-review-toolkit)
-and [rustpy-review-toolkit](https://github.com/devdanzin/rustpy-review-toolkit).
+Sibling of [cpython-review-toolkit](https://github.com/ReviewToolkits/cpython-review-toolkit)
+and [rustpy-review-toolkit](https://github.com/ReviewToolkits/rustpy-review-toolkit).
 Reviews PyPy's own source, not code that runs on PyPy, and not the
-CPython-compatible stdlib PyPy ships in `lib-python/`/`lib_pypy/`.
+CPython-compatible stdlib PyPy ships in `lib-python`/`lib_pypy/`.
 
 ## Findings
 
 Bugs reproduced on the interpreter are catalogued in
-[devdanzin/pypy-review-findings](https://github.com/devdanzin/pypy-review-findings)
+https://github.com/ReviewToolkits/pypy-review-findings
+
 (15 records — 12 reproduced, 3 static-confirmed), each with a minimal
 reproducer, captured output from both PyPy and CPython, and a root-cause
 analysis. `catalog/known_bugs.tsv` there is generated in the schema this
 toolkit's `known-issues` command consumes.
 
 Highlights:
+
 - **PYPYR-0012** — `re.Pattern('x', 0, [7, 2**32-1, 0]).match('abc')` →
   SIGSEGV from three lines of stdlib Python
   ([pypy/pypy#5571](https://github.com/pypy/pypy/issues/5571))
+
 - **PYPYR-0014** — raw `ValueError` in `pyframe.py` escapes as `SystemError`;
   first confirmed instance of the interp/app boundary bug class
+
 - **PYPYR-0004, 0005, 0009, 0011** — four instances of the two-clause
   precondition shape: surrogate codepoints leak
   `SystemError: unexpected internal exception (please report a bug)`
@@ -45,21 +49,22 @@ Highlights:
 | `scan_guard_callback_deref.py` | Guard → app-level callback → guarded-field dereference (TOCTOU) | **4/4 recall, 0 false positives** on 4 confirmed SIGSEGVs |
 
 **Agents** (`plugins/pypy-review-toolkit/agents/`):
+
 `translated-divergence-auditor`, `immutability-contract-auditor`,
 `interp-app-boundary-checker`, `rpython-restriction-scanner`,
 `unvalidated-helper-call-auditor`, `jit-trace-reviewer`, `git-history-analyzer`.
 
 **Commands** (`plugins/pypy-review-toolkit/commands/`):
+
 `explore`, `health`, `hotspots`, `known-issues`.
 
 **112 tests passing.**
 
 ## Requirements
 
-```
+```bash
 pip install -r requirements.txt
 ```
-
 
 **tree-sitter is required, not optional.** PyPy's RPython source is written in
 Python 2 syntax on every branch — the py3.x branches implement Python 3, they
@@ -72,7 +77,7 @@ Measured on `py3.11` (`fe2af5843a`), share of `.py` files failing `ast.parse()`
 under CPython 3.14:
 
 | layer | files | ast.parse() failures |
-|---|---|---|
+|---|---:|---:|
 | `pypy/interpreter` | 124 | **29.0%** |
 | `rpython/rlib` | 253 | **26.1%** |
 | `pypy/objspace` | 108 | **25.9%** |
@@ -89,6 +94,14 @@ to be inferred from a `"tree_sitter_available": false` flag.
 
 Not yet published to a marketplace. For local development:
 
-```
+```bash
 claude --plugin-dir plugins/pypy-review-toolkit
 ```
+
+---
+
+## Author
+
+Bhuvansh Kataria ([BHUVANSH855](https://github.com/BHUVANSH855))
+
+---
